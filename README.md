@@ -115,15 +115,17 @@ python parse_and_get_acc.py
 
 ## Acknowledgement
 
-This implementation was built on top of the public `d1` repository and adapted for TA-GRPO-d experiments.
-https://github.com/dllm-reasoning/d1
+This implementation was built on top of the public `d1(https://github.com/dllm-reasoning/d1)` repository and adapted for TA-GRPO-d experiments.
 
+
+```
 @article{zhao2025d1,
   title={d1: Scaling reasoning in diffusion large language models via reinforcement learning},
   author={Zhao, Siyan and Gupta, Devaansh and Zheng, Qinqing and Grover, Aditya},
   journal={arXiv preprint arXiv:2504.12216},
   year={2025}
 }
+```
 
 ## Citation
 
