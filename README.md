@@ -2,9 +2,7 @@
 
 This repository contains an implementation of TA-GRPO-d, a reinforcement learning method for improving denoising trajectories in discrete diffusion language models.
 
-This implementation is based on the public `d1` repository:
-
-- https://github.com/dllm-reasoning/d1
+This implementation is based on the public `d1` repository [d1].
 
 The method combines:
 
@@ -62,7 +60,7 @@ If you want to reproduce the reported training and evaluation flow in this repos
 
 ## Reimplementation Note
 
-This release is a reimplementation that tracks the evolving `d1` codebase rather than an exact frozen copy of the original paper snapshot.
+This release is a reimplementation that tracks the evolving `d1` codebase [d1] rather than an exact frozen copy of the original paper snapshot.
 
 Because of that, some low-level details can differ slightly from the paper implementation, especially in areas such as:
 
@@ -91,6 +89,14 @@ The paper comparison in this repository is controlled mainly by:
 
 - `--remasking probabilistic`
 - `--use_trajectory_aware_rewards true`
+- `--prob_threshold 0.7` during training
+- `--delta_scale` for trajectory-aware scaling
+
+In the current scripts:
+
+- TA training runs use `prob_threshold=0.7`
+- evaluation in `eval/run_eval.sh` uses `test_prob_threshold=0.8`
+- the math/code section is set up with a delta value of `0.5`
 
 compared against the corresponding baseline runs without those settings.
 
@@ -113,19 +119,9 @@ python parse_and_get_acc.py
 - If you adapt the scripts for new experiments, please double-check paths, checkpoint names, and model availability before launching long runs.
 - This repository should be viewed as a faithful reimplementation with very similar empirical behavior, not as a byte-identical release of the original internal training snapshot.
 
-## Acknowledgement
+## References
 
-This implementation was built on top of the public `d1(https://github.com/dllm-reasoning/d1)` repository and adapted for TA-GRPO-d experiments.
-
-
-```
-@article{zhao2025d1,
-  title={d1: Scaling reasoning in diffusion large language models via reinforcement learning},
-  author={Zhao, Siyan and Gupta, Devaansh and Zheng, Qinqing and Grover, Aditya},
-  journal={arXiv preprint arXiv:2504.12216},
-  year={2025}
-}
-```
+- [d1] Siyan Zhao, Devaansh Gupta, Qinqing Zheng, and Aditya Grover. "d1: Scaling reasoning in diffusion large language models via reinforcement learning." arXiv preprint arXiv:2504.12216, 2025. Repository: https://github.com/dllm-reasoning/d1
 
 ## Citation
 

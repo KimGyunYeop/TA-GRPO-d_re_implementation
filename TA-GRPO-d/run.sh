@@ -56,7 +56,7 @@ for dataset in "${DATASET[@]}"; do
         --use_trajectory_aware_rewards true \
         --remasking probabilistic \
         --prob_threshold 0.7 \
-        --delta_scale $DELTA_SCALE 
+        --delta_scale $MATH_CODE_DELTA 
 
     RUN_NAME=${MODEL_PATH}_${dataset}_base_bs12_bl${BLOCK_LENGTH}
     python -u diffu_grpo_train.py \
@@ -126,7 +126,7 @@ for dataset in "${DATASET[@]}"; do
         --use_trajectory_aware_rewards true \
         --remasking probabilistic \
         --prob_threshold 0.7 \
-        --delta_scale $DELTA_SCALE 
+        --delta_scale $MATH_CODE_DELTA 
 
     RUN_NAME=${MODEL_PATH}_${dataset}_base_bs12_bl${BLOCK_LENGTH}
     python -u diffu_grpo_train.py \
