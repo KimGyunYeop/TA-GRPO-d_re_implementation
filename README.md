@@ -58,18 +58,6 @@ For this release, the following scripts are the paper-aligned experiment pipelin
 
 If you want to reproduce the reported training and evaluation flow in this repository, please start from those scripts.
 
-## Reimplementation Note
-
-This release is a reimplementation that tracks the evolving `d1` codebase [d1] rather than an exact frozen copy of the original paper snapshot.
-
-Because of that, some low-level details can differ slightly from the paper implementation, especially in areas such as:
-
-- reward parsing rules
-- reward format handling
-- evaluation-side parsing behavior
-
-In our checks, the overall performance trend is very close to the paper results, although small numerical differences can still appear because of those implementation-level details.
-
 ## Training
 
 Run the main experiment script:
@@ -112,12 +100,19 @@ python parse_and_get_acc.py
 
 `run_eval.sh` saves generation files to the results directory, and `parse_and_get_acc.py` aggregates task accuracy and average diffusion steps from those saved outputs.
 
+## Reimplementation Note
 
-## Notes
+This release is a reimplementation that tracks the evolving `d1` codebase [d1] rather than an exact frozen copy of the original paper snapshot.
 
-- The repository `.gitignore` already excludes the main generated artifacts such as checkpoints, outputs, temporary files, execution files, logs, and result files.
-- If you adapt the scripts for new experiments, please double-check paths, checkpoint names, and model availability before launching long runs.
-- This repository should be viewed as a faithful reimplementation with very similar empirical behavior, not as a byte-identical release of the original internal training snapshot.
+Because of that, some low-level details can differ slightly from the paper implementation, especially in areas such as:
+
+- reward parsing rules
+- reward format handling
+- evaluation-side parsing behavior
+
+In our checks, the overall performance trend is very close to the paper results, although small numerical differences can still appear because of those implementation-level details.
+
+This repository should be viewed as a faithful reimplementation with very similar empirical behavior, not as a byte-identical release of the original internal training snapshot.
 
 ## References
 
