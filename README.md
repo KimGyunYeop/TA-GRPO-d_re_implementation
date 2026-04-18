@@ -27,7 +27,7 @@ Why this limitation exists:
 - The trajectory-aware reward path further mixes gathered rewards with per-rank local trajectory buffers, so the current implementation is not yet safe for data-parallel multi-process execution.
 - Some output-directory and logging writes are also not rank-safe in a multi-process launch.
 
-We are actively working on a patch for proper batched generation and data-parallel multi-GPU support.
+A patch for proper batched generation and data-parallel multi-GPU support will be released in a future update.
 
 ## Repository Layout
 
