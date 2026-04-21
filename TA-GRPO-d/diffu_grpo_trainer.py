@@ -444,6 +444,7 @@ class DiffuGRPOTrainer(GRPOTrainer):
             return x
 
     def forward_process(self, batch, prompt_index, mask_id, seed=None):
+        #TO DO multi-gpu,batch bug fix: set_seed() resets global RNG on every logprob call; verify whether multi-rank runs keep intended randomness by logging mask_seeds/RNG state per rank. Fix by using a local torch.Generator for masking instead of global seeding.
         set_seed(seed)
         b, l = batch.shape
         t_p = torch.ones(b, device=batch.device) * self.args.p_mask_prompt
@@ -473,6 +474,7 @@ class DiffuGRPOTrainer(GRPOTrainer):
 
     def get_logits(self, model, batch, prompt_index, cfg_scale, mask_id):
         if cfg_scale > 0.0:
+            #TO DO multi-gpu,batch bug fix: CFG uses one shared prompt_index for the whole batch, so left padding or per-sample prompt lengths can be treated as real prompt tokens. Verify with mixed-length prompts in one batch; fix by passing a per-sample prompt/attention mask.
             assert len(prompt_index) == batch.shape[1]
             prompt_index = prompt_index.unsqueeze(0).repeat(batch.shape[0], 1)
             un_batch = batch.clone()
@@ -522,6 +524,7 @@ class DiffuGRPOTrainer(GRPOTrainer):
 
         prompt_length = seq_len - logits_to_keep
         prompt_index = torch.zeros(seq_len, dtype=torch.bool, device=device)
+        #TO DO multi-gpu,batch bug fix: this assumes every row has the same prompt boundary and ignores prompt_mask/left padding. Verify logprobs on batch_size>1 mixed-length prompts; fix by carrying per-sample prompt_mask into forward_process/get_logits.
         prompt_index[:prompt_length] = True  # Mark prompt tokens as True
 
         # applying masks
@@ -631,6 +634,7 @@ class DiffuGRPOTrainer(GRPOTrainer):
                 # This works fine as we set num_generations == per_device_train_batch_size (no padding tokens created) in our config, but may cause
                 # unintended attention to padding tokens when num_generations is smaller.
                 # As currently we find Llada's modeling file does not handle attention mask. We will address this in future update soon.
+                #TO DO multi-gpu,batch bug fix: batch_prompt_mask is computed but unused, so mixed-length prompts can attend to left padding during generation. Verify by comparing batch_size=1 vs batched outputs; fix generate()/model call to honor attention_mask or strip padding per sample.
                 batch_prompt_completion_ids, diffusion_seq_log = self.generate(
                     model=unwrapped_model,
                     prompt=batch_prompt_ids,
@@ -670,6 +674,7 @@ class DiffuGRPOTrainer(GRPOTrainer):
         )  # we only need to compute the logits for the completion tokens
         if self.args.random_masking:
             # use random seeds for every iterations in GRPO iterations
+            #TO DO multi-gpu,batch bug fix: mask_seeds are sampled independently on each rank. Verify this is intended by logging seeds per sample/rank; fix by deriving deterministic per-sample seeds or broadcasting if cross-rank consistency is required.
             mask_seeds = torch.randint(0, 2**12, (self.num_iterations,), device=device)
         else:
             # use fixed seeds for every iterations in GRPO iterations
@@ -715,7 +720,9 @@ class DiffuGRPOTrainer(GRPOTrainer):
         save_dict["completions"] = completions
         
         def get_rewards(prom, comp, skip_flag=None):
+            #TO DO multi-gpu,batch bug fix: this helper always returns gathered/global rewards. Verify every caller expects global length; fix by separating local reward computation from optional distributed gather.
             if skip_flag is not None:
+                #TO DO multi-gpu,batch bug fix: skip_flag shrinks the local tensor before gather; rank-dependent skip counts can cause all_gather shape mismatch/hang. Verify by logging non-skip counts on every rank; fix by keeping fixed local shape and masking skipped rows.
                 rewards_per_func = torch.zeros(len(prom) - sum(skip_flag), len(self.reward_funcs), device=device)
             else:
                 rewards_per_func = torch.zeros(len(prom), len(self.reward_funcs), device=device)
@@ -733,6 +740,7 @@ class DiffuGRPOTrainer(GRPOTrainer):
                     # Repeat all input columns (but "prompt" and "completion") to match the number of generations
                     keys = [key for key in inputs[0] if key not in ["prompt", "completion"]]
                     reward_kwargs = {key: [example[key] for example in inputs] for key in keys}
+                    #TO DO multi-gpu,batch bug fix: reward_kwargs are not filtered when skip_flag filters prom/comp, so answers/targets can shift for batch_size>1. Verify len/order of kwargs after skip; fix by applying the same skip mask to every per-sample kwarg.
                     if reward_func_name == "coding_reward_func":
                         reward_kwargs["cwd_path"] = os.path.join(self.args.output_dir, "execution_files")
                     
@@ -771,6 +779,7 @@ class DiffuGRPOTrainer(GRPOTrainer):
                     "Please ensure that at least one reward function returns a valid reward."
                 )
 
+            #TO DO multi-gpu,batch bug fix: gather assumes identical tensor shapes and preserves rank-concatenated order. Verify shape/order with process_index and prompt ids; fix with fixed-size tensors or gather_object plus explicit regrouping if needed.
             rewards_per_func = gather(rewards_per_func)
             rewards = (rewards_per_func * self.reward_weights.to(device).unsqueeze(0)).nansum(dim=1)
 
@@ -780,6 +789,7 @@ class DiffuGRPOTrainer(GRPOTrainer):
         save_dict["rewards"] = rewards.cpu().numpy().tolist()
         
         # Compute grouped-wise rewards
+        #TO DO multi-gpu,batch bug fix: rewards is global after gather, and this view assumes gathered order is [prompt0 x G, prompt1 x G, ...]. Verify sampler/order when per_device_train_batch_size != num_generations or custom samplers are used; fix by grouping with explicit prompt ids.
         mean_grouped_rewards = rewards.view(-1, self.num_generations).mean(dim=1)
         std_grouped_rewards = rewards.view(-1, self.num_generations).std(dim=1)
 
@@ -792,6 +802,7 @@ class DiffuGRPOTrainer(GRPOTrainer):
         total_prompts = std_grouped_rewards.size(0)
         zero_std_ratio = zero_std_count / total_prompts if total_prompts > 0 else 0.0
 
+        #TO DO multi-gpu,batch bug fix: slicing assumes every rank contributed exactly len(prompts) rows to gathered rewards. Verify last/uneven batches and distributed sampler behavior; fix by gathering local lengths or using accelerator slice helpers.
         process_slice = slice(
             self.accelerator.process_index * len(prompts),
             (self.accelerator.process_index + 1) * len(prompts),
@@ -839,6 +850,7 @@ class DiffuGRPOTrainer(GRPOTrainer):
                 
                 if is_conversational(inputs[0]):
                     dsl_completions = []
+                    #TO DO multi-gpu,batch bug fix: dsl_i is stale from the previous loop and prompt.pop() mutates prompts, so conversational batch>1 can use the wrong prompt. Verify with two different conversational prompts; fix by iterating zip(prompts, dsl_completions_text) without mutating prompts.
                     for prompt, completion in zip([prompts[dsl_i]]*len(dsl_completions_text), dsl_completions_text):
                         bootstrap = prompt.pop()["content"] if prompt[-1]["role"] == "assistant" else ""
                         dsl_completions.append([{"role": "assistant", "content": bootstrap + completion}])
@@ -847,9 +859,11 @@ class DiffuGRPOTrainer(GRPOTrainer):
                 
                 with io.StringIO() as buf, redirect_stdout(buf): #for skip print
                     # skip reward calculation if the completion is same as previous step.
+                    #TO DO multi-gpu,batch bug fix: get_rewards gathers global dsl_rewards, but the following code treats it as local. Verify dsl_rewards.shape vs skip_flag.shape on >1 GPU; fix get_rewards to return local rewards here and gather only after local reconstruction if needed.
                     dsl_rewards, _ = get_rewards(prompts, dsl_completions, skip_flag=skip_flag) # only retrun non skip flags rewards
                     
                 tmp_reward = prev_dsl_rewards.clone()
+                #TO DO multi-gpu,batch bug fix: tmp_reward[~skip_flag] is local length, while dsl_rewards may be global length after gather. This can runtime-error on multi-GPU; fix by assigning only local non-skip rewards.
                 tmp_reward[~skip_flag] = dsl_rewards
                 dsl_rewards = tmp_reward
                 
@@ -869,6 +883,7 @@ class DiffuGRPOTrainer(GRPOTrainer):
             # s = cand_dsl_rewards.std()
             # advan_scale = (cand_dsl_rewards - m) / (s + 1e-8)
             n = self.num_generations
+            #TO DO multi-gpu,batch bug fix: local trajectory rewards are viewed by num_generations; verify local order remains prompt-contiguous when local batch contains multiple prompts. Fix by grouping trajectory rewards with explicit prompt ids.
             cand_d = cand_dsl_rewards.view(-1, n)            # [num_prompts, n]
             mu = cand_d.mean(dim=1, keepdim=True)            # [num_prompts, 1]
             sd = cand_d.std(dim=1, keepdim=True)             # [num_prompts, 1]
@@ -881,6 +896,7 @@ class DiffuGRPOTrainer(GRPOTrainer):
             save_dict["advan_scale"] = advan_scale.cpu().numpy().tolist()
             save_dict["scaled_advantages_per_token"] = advantages.cpu().numpy().tolist()
             save_dict["diffusion_seq_lengths"] = [int(dsl.size(0)) for dsl in diffusion_seq_log_all]
+            #TO DO multi-gpu,batch bug fix: every rank writes the same log filename, causing overwrite/corrupt JSON. Verify by checking rank-specific log contents; fix by writing only on main process or adding process_index to the filename.
             json.dump(save_dict, open(f"{self.args.output_dir}/logs/step_{self.state.global_step}_generation_log.json", "w"), indent=4)
         
         # Log the metrics
@@ -903,6 +919,7 @@ class DiffuGRPOTrainer(GRPOTrainer):
             self._metrics[mode][f"rewards/{reward_func_name}"].append(mean_rewards)
         self._metrics[mode]["reward"].append(rewards.mean().item())
         self._metrics[mode]["reward_std"].append(std_grouped_rewards.mean().item())
+        #TO DO multi-gpu,batch bug fix: avg_diffusion_step is computed from local diffusion logs only. Verify whether reported metrics differ by rank; fix by gather_for_metrics on per-sample diffusion lengths.
         self._metrics[mode]["avg_diffusion_step"].append(sum([dsl.size(0) for dsl in diffusion_seq_log_all])/len(diffusion_seq_log_all) if len(diffusion_seq_log_all) > 0 else 0)
 
         if self.log_completions and self.state.global_step % self.args.logging_steps == 0:
@@ -922,6 +939,7 @@ class DiffuGRPOTrainer(GRPOTrainer):
                     import pandas as pd
 
                     # For logging
+                    #TO DO multi-gpu,batch bug fix: prompt/completion/reward columns are global, but num_diffusion_step is local. Verify DataFrame lengths on multi-GPU; fix by gather_object/gather_for_metrics for diffusion steps too.
                     table = {
                         "step": [str(self.state.global_step)] * len(rewards),
                         "prompt": prompts_to_log,

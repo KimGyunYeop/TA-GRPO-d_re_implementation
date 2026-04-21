@@ -115,6 +115,7 @@ class HumanevalDataset(torch.utils.data.Dataset):
         questions = [item[1] for item in batch]
         answers = [item[2] for item in batch]
         test_codes = [item[3] for item in batch]
+        #TO DO multi-gpu,batch bug fix: only input_ids are returned, so eval generation cannot mask left padding for batch_size>1. Verify mixed-length prompt batches; fix by returning attention_mask and passing it through eval/generate_for_test.
         input_ids = self.tokenizer(
             prompts, padding_side="left", return_tensors="pt", padding="longest"
         ).input_ids

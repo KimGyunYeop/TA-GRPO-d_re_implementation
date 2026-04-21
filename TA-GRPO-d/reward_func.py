@@ -44,6 +44,7 @@ def correctness_reward_func(prompts, completions, answer, step=None, run_name=No
         "-" * 20,
         f"\n{YELLOW}Extracted:{RESET}\n{extracted_responses[0]}\n",
     )
+    #TO DO multi-gpu,batch bug fix: this assumes answer order/length matches completions. Verify after trainer skip_flag filtering; fix by filtering answer with the same mask or asserting equal lengths before zip.
     return [2.0 if r == a else 0.0 for r, a in zip(extracted_responses, answer)]
 
 
@@ -174,6 +175,7 @@ def countdown_reward_func(prompts, completions, run_name, step=None, rank=None, 
 
     scores = []
     for i, response in enumerate(responses):
+        #TO DO multi-gpu,batch bug fix: kwargs are indexed by local response order. Verify target/numbers were filtered/reordered with responses for batch_size>1; fix trainer reward_kwargs masking or pass sample ids.
         ground_truth = {"target": kwargs["target"][i], "numbers": kwargs["numbers"][i]}
         scores.append(compute_score(response, ground_truth))
 
@@ -220,6 +222,7 @@ def sudoku_reward_func(prompts, completions, run_name, step=None, rank=None, **k
     scores = []
     for i, response in enumerate(responses):
         do_print = np.random.rand() < 0.4
+        #TO DO multi-gpu,batch bug fix: puzzle/solution are assumed to align with responses. Verify alignment when skip_flag removes rows; fix by filtering these kwargs together with completions.
         puzzle = kwargs["puzzle"][i]
         ground_truth = kwargs["solution"][i]
         solution = extract_answer_sudoku(response)
@@ -270,6 +273,7 @@ def correctness_reward_func_math(
     )
     print("✅" if is_equiv(extracted_responses[0], answer[0]) else "❌")
 
+    #TO DO multi-gpu,batch bug fix: zip silently truncates/misaligns if answer was not filtered with completions. Verify lengths and sample ids; fix by filtering answer in trainer or asserting len(answer)==len(completions).
     return [2.0 if is_equiv(r, a) else 0.0 for r, a in zip(extracted_responses, answer)]
 
 
@@ -282,6 +286,7 @@ def boxed_and_answer_tags_format_reward(
 
 
 def run_test(test_func_name, code_str, result_dict, cwd_path, rank):
+    #TO DO multi-gpu,batch bug fix: cwd_path only includes test-function rank, not accelerator process/sample id, so multiple GPU ranks can share execution dirs. Verify concurrent multi-GPU code reward runs; fix by adding process_index/sample id to cwd_path.
     cwd_path = cwd_path + "/" + str(rank)
     os.makedirs(cwd_path, exist_ok=True)
 
@@ -376,6 +381,7 @@ def coding_reward_func(prompts, completions, answer, step=None, run_name=None, *
 
             programs.append((code, is_in_answer))
 
+    #TO DO multi-gpu,batch bug fix: answer must be aligned with programs, but trainer skip_flag can filter completions without filtering answer. Verify len/program-to-test mapping; fix by masking answer with the same skip mask.
     unit_tests = [entry["tests"] for entry in answer]
     rewards = []
     for i, (solution, tests) in enumerate(zip(programs, unit_tests)):

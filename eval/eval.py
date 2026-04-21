@@ -85,6 +85,7 @@ def evaluate(
         for batch in tqdm(dataloader):
             start_time = time.time()
             input_ids = batch["input_ids"].to(device)
+            #TO DO multi-gpu,batch bug fix: collate_fn returns no attention_mask and generate_for_test receives only input_ids, so batch_size>1 mixed-length prompts can treat left padding as context. Verify batch_size=1 vs batched generations; fix by returning/passing attention_mask or evaluating one prompt at a time.
             gt_answers = batch["answers"]
             questions = batch["questions"]
             prompts = batch["prompts"]
@@ -123,6 +124,7 @@ def evaluate(
             print(f"Ground truth: {gt_answers[idx]}")
             
             if save_processing_dir is not None:
+                #TO DO multi-gpu,batch bug fix: every distributed eval rank would write the same processing file. Verify launch mode/rank count; fix by writing only on rank0 or using rank-specific filenames plus a final gather.
                 with open(save_processing_dir+"_processing_generations.json", "w") as f:
                     json.dump(
                         {
@@ -139,6 +141,7 @@ def evaluate(
 
     if save_processing_dir is not None:
         # remove intermediate processing file
+        #TO DO multi-gpu,batch bug fix: multiple eval ranks can race on removing this file. Verify distributed eval behavior; fix by rank0-only remove or barrier-protected cleanup.
         os.remove(save_processing_dir+"_processing_generations.json")
 
     avg_wall_time = sum(wall_times) / len(wall_times)
@@ -284,6 +287,7 @@ if __name__ == "__main__":
         # is_boxed=args.boxed
     )
 
+    #TO DO multi-gpu,batch bug fix: no DistributedSampler is used, so multi-GPU eval would duplicate the full dataset on every rank. Verify by logging sample ids per rank; fix with DistributedSampler and gather final generations.
     dataloader = DataLoader(
         dataset,
         batch_size=args.batch_size,
@@ -303,6 +307,7 @@ if __name__ == "__main__":
     #     model_name = model_name + f"_{args.suffix}"
 
     os.makedirs(args.test_output_dir, exist_ok=True)
+    #TO DO multi-gpu,batch bug fix: output existence check/write is not rank-guarded, so multi-GPU eval can race or overwrite the final JSON. Verify process_index in eval logs; fix by saving only on main process after gathering.
     if args.boxed:
         filename = f"{args.test_output_dir}/{grpo_config.dataset}_{model_name}_ds{trainer.args.diffusion_steps}_bl{trainer.args.block_length}_remask{trainer.args.remasking}_pt{trainer.args.prob_threshold}_boxed_generations.json"
     else:
@@ -337,4 +342,3 @@ if __name__ == "__main__":
                 f,
                 indent=2,
             )
-
