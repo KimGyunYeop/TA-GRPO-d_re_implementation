@@ -121,3 +121,11 @@ This repository should be viewed as a faithful reimplementation with very simila
 ## Citation
 
 If you use this repository, please cite the corresponding paper once the final bibliographic information is available.
+
+## Known Limitation: Batch and Data-Parallel Runs
+
+This release is currently intended for single-sample generation/evaluation and non-data-parallel training.
+
+Multi-batch runs can be unreliable because generation and log-probability paths do not fully use per-sample attention masks, so padded tokens may affect outputs when prompts of different lengths are batched together. Data-parallel multi-GPU runs are also not yet supported because reward gathering, rank slicing, trajectory-aware reward buffers, and some logging paths assume tightly aligned local rank shapes.
+
+We plan to fix proper batched execution and data-parallel multi-GPU support in a future release.
